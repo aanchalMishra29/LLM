@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from datetime import datetime
 from crewai import Agent, Task, Crew, Process
-from crewai.tools import tool
+from crewai_tools import tool
 from langchain_google_genai import ChatGoogleGenerativeAI
 from duckduckgo_search import DDGS
 from langchain_community.chat_models import ChatLiteLLM
