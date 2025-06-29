@@ -5,7 +5,7 @@ from typing import List, Dict, Any
 import json
 
 # Backend configuration
-BACKEND_URL = "http://localhost:8000"  
+BACKEND_URL = "https://agentic-backend-x5i7.onrender.com"  
 CHAT_ENDPOINT = f"{BACKEND_URL}/chat"
 UPLOAD_ENDPOINT = f"{BACKEND_URL}/process-documents"
 
@@ -119,7 +119,7 @@ def get_agent_response(user_message: str, selected_agent: str, processed_docs: L
     except requests.exceptions.Timeout:
         return "⏱️ Request timed out. The agent is taking too long to process your request."
     except requests.exceptions.ConnectionError:
-        return "🔌 Connection error. Please make sure the backend server is running on http://127.0.0.1:8000"
+        return "🔌 Connection error. Please make sure the backend server is running"
     except requests.exceptions.RequestException as e:
         return f"🌐 Network error: {str(e)}"
     except json.JSONDecodeError:
@@ -140,7 +140,7 @@ with st.sidebar:
     else:
         st.error(f"🔴 Backend Offline: {status}")
         st.write("**Troubleshooting:**")
-        st.write("1. Make sure backend is running on http://127.0.0.1:8000")
+        st.write("1. Make sure backend is running")
         st.write("2. Check if /health endpoint exists")
         st.write("3. Verify no firewall/port blocking")
     
