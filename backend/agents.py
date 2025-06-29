@@ -15,6 +15,7 @@ import uuid
 import json
 import PyPDF2
 import mimetypes
+import pandas as pd
 
 class ChatMessage(BaseModel):
     role: str
@@ -51,7 +52,7 @@ if not GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY environment variable is required")
 
 llm = ChatLiteLLM(
-    model="gemini/gemini-2.0-flash",  # Note the "gemini/" prefix
+    model="gemini/gemini-2.0-flash", 
     api_key=GEMINI_API_KEY,
     temperature=0.7
 )
@@ -123,18 +124,15 @@ def read_file_content(file_path: Path) -> str:
         file_extension = file_path.suffix.lower()
         
         if file_extension in ['.txt', '.md', '.csv']:
-            # Read text files directly
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 return f.read()
         
         elif file_extension == '.json':
-            # Read and format JSON files
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 return json.dumps(data, indent=2)
         
         elif file_extension == '.pdf':
-            # Extract text from PDF files
             try:
                 with open(file_path, 'rb') as f:
                     pdf_reader = PyPDF2.PdfReader(f)
@@ -150,13 +148,63 @@ def read_file_content(file_path: Path) -> str:
                     
                     if text_content:
                         return "\n\n".join(text_content)
+                        
                     else:
                         return f"[PDF FILE] {file_path.name} - No text content could be extracted from this PDF"
                         
             except Exception as e:
                 return f"[PDF ERROR] {file_path.name} - Failed to read PDF: {str(e)}"
+        elif file_extension in ['.xlsx', '.xls']:
+            try:
+                excel_data = pd.read_excel(file_path, sheet_name=None, engine='openpyxl' if file_extension == '.xlsx' else 'xlrd')
+                
+                if not excel_data:
+                    return f"[EXCEL FILE] {file_path.name} - No sheets found in Excel file"
+                
+                formatted_content = []
+                formatted_content.append(f"[EXCEL FILE] {file_path.name}")
+                formatted_content.append(f"Total sheets found: {len(excel_data)}")
+                formatted_content.append("=" * 50)
+                
+                for sheet_name, df in excel_data.items():
+                    formatted_content.append(f"\n--- Sheet: {sheet_name} ---")
+                    formatted_content.append(f"Dimensions: {df.shape[0]} rows × {df.shape[1]} columns")
+                    
+                    if df.empty:
+                        formatted_content.append("Sheet is empty")
+                        continue
+                    
+                    formatted_content.append(f"Columns: {', '.join(df.columns.astype(str))}")
+                    
+                    display_df = df.head(100) if len(df) > 100 else df
+                    
+                    df_string = display_df.to_string(
+                        index=True, 
+                        max_rows=100, 
+                        max_cols=20,
+                        na_rep='',
+                        float_format=lambda x: f'{x:.2f}' if pd.notna(x) else ''
+                    )
+                    
+                    formatted_content.append("\nData Preview:")
+                    formatted_content.append(df_string)
+                    
+                    if len(df) > 100:
+                        formatted_content.append(f"\n... ({len(df) - 100} more rows not shown)")
+                    
+                    numeric_cols = df.select_dtypes(include=['number']).columns
+                    if len(numeric_cols) > 0:
+                        formatted_content.append(f"\nNumeric columns summary:")
+                        stats_df = df[numeric_cols].describe()
+                        formatted_content.append(stats_df.to_string())
+                    
+                    formatted_content.append("\n" + "-" * 40)
+                
+                return "\n".join(formatted_content)
+                
+            except Exception as e:
+                return f"[EXCEL ERROR] {file_path.name} - Failed to read Excel file: {str(e)}"
         else:
-            # Try to read as text for other formats
             try:
                 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                     content = f.read()
@@ -196,12 +244,13 @@ def create_document_task(query: str, requested_documents: List[dict[str, str]]):
         Instructions:
         1. Use the Read Document tool to read the requested document(s)
         2. Analyze the document content to answer the user's question
-        3. If the requested document doesn't exist, inform the user clearly
-        4. If the document exists but doesn't contain relevant information, mention this
-        5. Provide accurate and comprehensive answers based on the document content
-        6. Be helpful and conversational in your response
+        3. Provide ONLY the direct answer - no extra details
+        4. If the requested document doesn't exist, inform the user clearly
+        5. If the document exists but doesn't contain relevant information, mention this
+        6. Provide accurate and comprehensive answers based on the document content
+        7. Be helpful and conversational in your response
         """,
-        expected_output="A detailed answer to the query based on the requested document(s), clearly indicating if documents were found and analyzed",
+        expected_output="A direct detailed answer to the query based on the requested document(s), clearly indicating if documents were found and analyzed",
         agent=create_document_agent(requested_documents)
     )
 
@@ -294,7 +343,6 @@ async def chat(request: ChatRequest):
         timestamp = datetime.now().strftime("%H:%M:%S")
         
         if request.agent_type == "Generic News Agent":
-            # Create and run news crew
             task = create_news_task(request.message)
             crew = Crew(
                 agents=[create_news_agent()],
@@ -307,7 +355,6 @@ async def chat(request: ChatRequest):
             response_text = str(result)
             
         elif request.agent_type == "Doc Chat Agent":
-            # Create and run document crew with documents passed in request
             task = create_document_task(request.message, request.documents)
             crew = Crew(
                 agents=[create_document_agent(request.documents)],
@@ -335,7 +382,6 @@ async def chat(request: ChatRequest):
 async def process_documents(files: List[UploadFile] = File(...)):
     """Process documents, store them in root path, and return their content for immediate use"""
     try:
-        # Ensure the documents directory exists
         DOCUMENTS_ROOT_PATH.mkdir(exist_ok=True)
         
         processed_docs = []
@@ -343,24 +389,23 @@ async def process_documents(files: List[UploadFile] = File(...)):
         for file in files:
             content = await file.read()
             
-            # Generate unique filename to avoid conflicts
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             unique_id = str(uuid.uuid4())[:8]
             file_extension = Path(file.filename).suffix
             stored_filename = f"{timestamp}_{unique_id}_{Path(file.filename).stem}{file_extension}"
             
-            # Full path where file will be stored
             file_path = DOCUMENTS_ROOT_PATH / stored_filename
             
-            # Store the file
             with open(file_path, 'wb') as f:
                 f.write(content)
+
+            file_ext = file.filename.lower().split('.')[-1] if '.' in file.filename else ''
             
-            # Convert bytes to string for text processing
-            if file.filename.lower().endswith('.txt'):
+            if file_ext in ['txt', 'md', 'csv', 'json']:
                 text_content = content.decode('utf-8', errors='ignore')
+            elif file_ext in ['xlsx', 'xls']:
+                text_content = f"[EXCEL] {file.filename} - Excel file uploaded successfully. Use Read Document tool to analyze content."
             else:
-                # For other formats, store as base64 or let agent handle
                 text_content = f"[{file.content_type}] {file.filename} - Content stored at {file_path}"
             
             processed_docs.append({
