@@ -166,10 +166,11 @@ with st.sidebar:
     # Document upload section
     if selected_agent == "Doc Chat Agent":
         st.subheader("📄 Document Upload")
+        st.caption("⚠️ Maximum file size: 10MB per file.")  # <-- Add this line
         uploaded_files = st.file_uploader(
             "Upload documents:", 
             accept_multiple_files=True,
-            type=['txt', 'pdf', 'docx', 'xlsx', 'xls', 'csv', 'json', 'md'],
+            type=['pdf', 'docx', 'txt'],
             help="Upload documents to analyze with the Doc Chat Agent"
         )
         
