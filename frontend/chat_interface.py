@@ -24,6 +24,13 @@ if "processed_documents" not in st.session_state:
     st.session_state.processed_documents = []
 if "current_agent" not in st.session_state:
     st.session_state.current_agent = "Generic News Agent"
+if "agent_response" not in st.session_state:
+    st.session_state.agent_response = None
+if "processing_start_time" not in st.session_state:
+    st.session_state.processing_start_time = None
+if "agent_thread_active" not in st.session_state:
+    st.session_state.agent_thread_active = False
+
 
 def test_backend_connection():
     """Test if backend is reachable"""
@@ -95,7 +102,7 @@ def get_agent_response(user_message: str, selected_agent: str, processed_docs: L
                 "Content-Type": "application/json",
                 "Accept": "application/json"
             },
-            timeout=120  
+            timeout=300
         )
         
         if response.status_code == 200:
